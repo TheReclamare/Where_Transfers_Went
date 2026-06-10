@@ -438,6 +438,28 @@ async function loadAll(){
   DATA=out;
 }
 
+/* ---------------- recipient name canonicalization ---------------- */
+// Fold case, accents, apostrophes and punctuation so spelling variants of the
+// same recipient collapse to one, while genuinely different names stay separate.
+function normKey(s){
+  return (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/[^a-z0-9]+/g," ").trim();
+}
+function canonicalizeRecipients(){
+  const byKey=new Map();                 // normKey -> Map(variant -> total $)
+  for(const d of DATA){ const k=normKey(d.rcpt); let m=byKey.get(k); if(!m){m=new Map();byKey.set(k,m);}
+    m.set(d.rcpt,(m.get(d.rcpt)||0)+d.amt); }
+  const canon=new Map();                 // normKey -> chosen display spelling
+  const rank=(name,amt)=>[/[a-z]/.test(name)?1:0, /[À-ÿ]/.test(name)?1:0, amt];  // prefer mixed-case, then accented, then biggest $
+  const better=(a,b)=>a[0]!==b[0]?a[0]-b[0]:(a[1]!==b[1]?a[1]-b[1]:a[2]-b[2]);
+  for(const [k,m] of byKey){
+    let best=null,bestR=null;
+    for(const [name,amt] of m){ const r=rank(name,amt); if(!best||better(r,bestR)>0){best=name;bestR=r;} }
+    canon.set(k,best);
+  }
+  for(const d of DATA){ d.rcpt = canon.get(normKey(d.rcpt)); }
+}
+
 /* ---------------- state + filtering ---------------- */
 const S={ yrMin:null, yrMax:null, ministry:"__all", recipient:null,
   types:new Set(["Statutory","Grant","Contribution","Other transfer payment"]),
@@ -772,6 +794,7 @@ function wireTabs(){
     document.getElementById("loadmsg").innerHTML='<span class="err">Could not load any source files. The GitHub mirror may be unreachable from here.</span>';
     return;
   }
+  canonicalizeRecipients();
   buildFilters(); wireTabs(); repaint(); renderDiag();
   document.getElementById("loader").style.display="none";
   document.getElementById("app").style.display="";

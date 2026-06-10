@@ -341,8 +341,9 @@ function fmt(n){
 const fmtInt = n => n.toLocaleString("en-CA");
 
 /* recipient-kind classifier — heuristic, order matters */
-function classify(name, intl){
+function classify(name, intl, dept){
   const n=(name||"").toLowerCase();
+  const indigDept=/indian affairs|aboriginal affairs|indigenous|crown-indigenous|northern affairs/.test((dept||"").toLowerCase());
   if(!n) return "Other";
   if(/payments?\s+under|contracts?\s+under|names?\s+withheld|name\(s\)\s+withheld|recovery of payment|withheld/.test(n))
     return "Under-threshold & withheld";
@@ -354,6 +355,7 @@ function classify(name, intl){
     return "Provincial & territorial";
   if(/^city of|^town of|^village of|^township|municipalit|regional municipalit|region of|^ville de|metropolitan|county of|district of/.test(n))
     return "Municipal / local";
+  if(indigDept) return "Indigenous";   // dept-aware: Indigenous-program money reaching a non-government recipient (incl. community-named bands, settlement trusts)
   if(/universit|\bcollege\b|coll[eè]ge|institute|institut\b|polytechniqu|\bschool\b|research (institute|council|centre)|c[eé]gep|\bcrc\b/.test(n))
     return "Universities & research";
   if(/\b(inc|ltd|llp|ulc|corp|corporation|company|limited|incorporated|partnership|\.com)\b|\binc\.?$|\bltd\.?$|\blp\b|\bbank\b|scotiabank|financial group|trust company|trust corporation|insurance company|assurance/.test(n))
@@ -414,7 +416,7 @@ async function loadAll(){
           const g=geoFromName(rcpt); prov=g.prov; intl=g.intl;
         }
         const type=inferType(row[K.prog]);
-        const rtype=classify(rcpt, intl);
+        const rtype=classify(rcpt, intl, (row[K.dept]||"")+" "+(row[K.port]||""));
         out.push({
           y:startYr(yr), yl:ylab(yr),
           port:(row[K.port]||"Unspecified").trim(),
@@ -465,7 +467,7 @@ const RULE=getComputedStyle(document.documentElement).getPropertyValue("--rule")
 Chart.defaults.font.family="IBM Plex Mono, monospace";
 Chart.defaults.font.size=11;
 Chart.defaults.color=INK2;
-function yAxis(){ return {grid:{color:RULE,drawTicks:false},border:{display:false},
+function yAxis(){ return {beginAtZero:true, grid:{color:RULE,drawTicks:false},border:{display:false},
   ticks:{callback:v=>fmt(v)}}; }
 function xAxis(){ return {grid:{display:false},border:{color:RULE}}; }
 function kill(id){ if(charts[id]){charts[id].destroy(); delete charts[id]; } }

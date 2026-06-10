@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Canada Transfer Payments — Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --paper:#EAEEF1;        /* ledger ground */
+    --paper-2:#F4F6F8;      /* raised cards */
+    --rule:#C3CDD6;         /* hairline rules */
+    --rule-soft:#D7DEE4;
+    --ink:#1B2A3A;          /* deep slate ink */
+    --ink-2:#566576;        /* secondary */
+    --ink-3:#8190A0;        /* muted */
+    --accent:#C8102E;       /* Canada red, used sparingly */
+    --accent-deep:#9b0c23;
+    --ok:#1f7a5a;
+    /* categorical series — considered, not rainbow */
+    --c0:#1B2A3A; --c1:#2E6E8E; --c2:#C8102E; --c3:#C99700; --c4:#6B4E9E;
+    --c5:#2F8F6B; --c6:#B5562A; --c7:#4A5B6B; --c8:#9099A6;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Inter",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    line-height:1.45;
+  }
+  .num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 22px 80px}
+
+  /* Header / hero */
+  header.masthead{border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:6px}
+  .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-2)}
+  h1{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:clamp(28px,5vw,46px);line-height:1.02;margin:8px 0 4px;letter-spacing:-.02em}
+  .dek{color:var(--ink-2);font-size:15px;max-width:62ch}
+  .dek b{color:var(--ink);font-weight:600}
+
+  /* Tabs */
+  nav.tabs{display:flex;gap:0;border-bottom:1px solid var(--rule);margin:22px 0 18px;flex-wrap:wrap}
+  nav.tabs button{
+    background:none;border:none;border-bottom:2px solid transparent;
+    font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:14px;
+    color:var(--ink-3);padding:10px 16px 12px;cursor:pointer;margin-bottom:-1px;
+  }
+  nav.tabs button:hover{color:var(--ink)}
+  nav.tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
+
+  /* Filter bar */
+  .filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;
+    background:var(--paper-2);border:1px solid var(--rule);padding:16px;margin-bottom:20px}
+  .fgroup label.h{display:block;font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--ink-2);margin-bottom:7px}
+  select,input[type=text]{width:100%;font-family:"Inter",sans-serif;font-size:13px;color:var(--ink);
+    background:#fff;border:1px solid var(--rule);padding:7px 8px;border-radius:0}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{font-size:11.5px;font-family:"Inter";border:1px solid var(--rule);background:#fff;color:var(--ink-2);
+    padding:4px 8px;cursor:pointer;user-select:none;white-space:nowrap}
+  .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .yrrow{display:flex;align-items:center;gap:8px}
+  .yrrow select{flex:1}
+
+  .ac-wrap{position:relative}
+  .ac-menu{position:absolute;left:0;right:0;top:100%;z-index:40;background:#fff;border:1px solid var(--rule);
+    border-top:none;max-height:260px;overflow:auto;box-shadow:0 8px 22px rgba(27,42,58,.12)}
+  .ac-item{padding:7px 10px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--rule-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ac-item:last-child{border-bottom:none}
+  .ac-item:hover,.ac-item.on{background:var(--ink);color:#fff}
+
+  /* KPI strip */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule);
+    border:1px solid var(--rule);margin-bottom:22px}
+  .kpi{background:var(--paper-2);padding:16px 16px 14px}
+  .kpi .k{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2)}
+  .kpi .v{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:26px;margin-top:6px;letter-spacing:-.02em}
+  .kpi .v small{font-size:14px;font-weight:500;color:var(--ink-2)}
+
+  /* Panels */
+  .panel{background:var(--paper-2);border:1px solid var(--rule);padding:18px 18px 20px;margin-bottom:20px}
+  .panel h2{font-family:"Space Grotesk";font-weight:600;font-size:16px;margin:0 0 2px;letter-spacing:-.01em}
+  .panel .sub{color:var(--ink-2);font-size:12.5px;margin-bottom:14px}
+  .chartbox{position:relative;height:360px}
+  .chartbox.tall{height:440px}
+
+  .seg{display:inline-flex;border:1px solid var(--rule);background:#fff;margin-bottom:14px}
+  .seg button{background:none;border:none;border-right:1px solid var(--rule);font-family:"Inter";font-size:12px;
+    padding:6px 12px;color:var(--ink-2);cursor:pointer}
+  .seg button:last-child{border-right:none}
+  .seg button.on{background:var(--ink);color:#fff}
+
+  /* Tables */
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--rule-soft)}
+  th{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-2);border-bottom:1px solid var(--rule)}
+  td.r,th.r{text-align:right}
+  tr.clickable{cursor:pointer}
+  tr.clickable:hover td{background:#fff}
+  .bar{height:8px;background:var(--c1);display:inline-block;vertical-align:middle}
+
+  .pos{color:var(--ok)} .neg{color:var(--accent)}
+  .swatch{display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:baseline}
+
+  /* loader */
+  #loader{position:fixed;inset:0;background:var(--paper);display:flex;align-items:center;justify-content:center;z-index:50}
+  #loader .box{text-align:center;max-width:440px}
+  #loader .lbl{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-2);margin-top:14px;letter-spacing:.04em}
+  .track{height:3px;background:var(--rule);width:320px;max-width:80vw;margin:18px auto 0}
+  .track > div{height:100%;background:var(--accent);width:0;transition:width .25s}
+  .ledgerline{font-family:"Space Grotesk";font-weight:700;font-size:30px;letter-spacing:-.02em}
+
+  .note{font-size:12px;color:var(--ink-2);border-left:2px solid var(--accent);padding:4px 0 4px 12px;margin:10px 0}
+  .small{font-size:12px;color:var(--ink-2)}
+  .pickrow{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px}
+  .pickrow .fgroup{min-width:160px}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px;font-size:12px}
+  .legend span{display:flex;align-items:center}
+  .err{color:var(--accent)}
+  @media (max-width:560px){ .wrap{padding:18px 14px 60px} .kpi .v{font-size:21px} }
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="box">
+    <div class="eyebrow">Public Accounts of Canada · Transfer payments</div>
+    <div class="ledgerline" style="margin-top:8px">Opening the ledger…</div>
+    <div class="track"><div id="bar"></div></div>
+    <div class="lbl" id="loadmsg">Fetching 11 fiscal years from source</div>
+  </div>
+</div>
+
+<div class="wrap" id="app" style="display:none">
+  <header class="masthead">
+    <div class="eyebrow">Public Accounts of Canada · Volume III · Transfer payments</div>
+    <h1>Where the transfers actually went</h1>
+    <p class="dek">Cash <b>actually paid out</b> as grants and contributions, fiscal years <span class="num" id="yrspan"></span>. Pulled live from the published source files — <b id="loadedyrs"></b>. Slice by ministry, type, geography, and recipient kind; compare anything against anything.</p>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="trends" class="on">Trends</button>
+    <button data-tab="compare">Compare</button>
+    <button data-tab="recipients">Recipients</button>
+    <button data-tab="method">Data &amp; method</button>
+  </nav>
+
+  <!-- GLOBAL FILTERS -->
+  <div class="filters" id="filters">
+    <div class="fgroup">
+      <label class="h">Fiscal years</label>
+      <div class="yrrow">
+        <select id="yrMin"></select><span class="small">to</span><select id="yrMax"></select>
+      </div>
+    </div>
+    <div class="fgroup">
+      <label class="h">Ministry</label>
+      <input type="text" id="fMinistry" placeholder="All ministries — type to search" autocomplete="off" />
+    </div>
+    <div class="fgroup">
+      <label class="h">Recipient</label>
+      <input type="text" id="fRecipient" placeholder="All recipients — type to search" autocomplete="off" />
+    </div>
+    <div class="fgroup">
+      <label class="h">Type</label>
+      <div class="chips" id="fType"></div>
+    </div>
+    <div class="fgroup">
+      <label class="h">Geography</label>
+      <div class="chips" id="fGeo"></div>
+    </div>
+    <div class="fgroup" style="grid-column:1/-1">
+      <label class="h">Recipient kind</label>
+      <div class="chips" id="fRtype"></div>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpis" id="kpis"></div>
+
+  <!-- TRENDS -->
+  <section data-pane="trends">
+    <div class="panel">
+      <h2>Total paid per year</h2>
+      <div class="sub">Sum of cash disbursed under the current filter, by fiscal year.</div>
+      <div class="chartbox"><canvas id="trendChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>Composition</h2>
+      <div class="sub">How the yearly total breaks down. Choose the dimension to stack by.</div>
+      <div class="seg" id="compDim">
+        <button data-d="type" class="on">By type</button>
+        <button data-d="rtype">By recipient kind</button>
+        <button data-d="ministry">By ministry</button>
+        <button data-d="geo">Domestic / intl</button>
+      </div>
+      <div class="chartbox tall"><canvas id="compChart"></canvas></div>
+    </div>
+  </section>
+
+  <!-- COMPARE -->
+  <section data-pane="compare" style="display:none">
+    <div class="panel">
+      <h2>Compare lines</h2>
+      <div class="sub">Pick a dimension, then choose the members to overlay across years. Independent of the filters above except the year range.</div>
+      <div class="pickrow">
+        <div class="fgroup">
+          <label class="h">Dimension</label>
+          <select id="cmpDim">
+            <option value="ministry">Ministry</option>
+            <option value="recipient">Recipient</option>
+            <option value="rtype">Recipient kind</option>
+            <option value="type">Type (grant / contribution)</option>
+            <option value="prov">Province / territory</option>
+          </select>
+        </div>
+        <div class="fgroup" style="flex:1;min-width:240px">
+          <label class="h">Members <span class="small">(type to find any, or tap to toggle — up to 7)</span></label>
+          <input type="text" id="cmpSearch" placeholder="Search to add a member…" autocomplete="off" style="margin-bottom:8px" />
+          <div class="chips" id="cmpMembers"></div>
+        </div>
+      </div>
+      <div class="chartbox tall"><canvas id="cmpChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>The numbers</h2>
+      <div class="sub">First vs. last year in range, decade total, and change.</div>
+      <div style="overflow-x:auto"><table id="cmpTable"></table></div>
+    </div>
+  </section>
+
+  <!-- RECIPIENTS -->
+  <section data-pane="recipients" style="display:none">
+    <div class="panel">
+      <h2>Who got paid</h2>
+      <div class="sub">Ranked by total received across the selected years, under the current filters. Click a row to trace it over time.</div>
+      <div class="fgroup" style="margin-bottom:14px">
+        <label class="h">Search recipient</label>
+        <input type="text" id="rSearch" placeholder="e.g. Ontario, university, First Nation, Red Cross…" />
+      </div>
+      <div style="overflow-x:auto"><table id="rTable"></table></div>
+    </div>
+    <div class="panel" id="rDetailPanel" style="display:none">
+      <h2 id="rDetailName">Recipient</h2>
+      <div class="sub">Cash received by fiscal year.</div>
+      <div class="chartbox"><canvas id="rChart"></canvas></div>
+    </div>
+  </section>
+
+  <!-- METHOD -->
+  <section data-pane="method" style="display:none">
+    <div class="panel">
+      <h2>What this is — and isn't</h2>
+      <p class="small" style="max-width:72ch">
+        Every figure is cash <b>actually disbursed</b> in the fiscal year, taken from the
+        <i>Aggregate&nbsp;payments</i> column of the Public Accounts transfer-payment files (one row per
+        recipient per authority). These are real payments, not commitments or budgets — there is no
+        estimating or year-over-year differencing here. Amounts are in actual dollars. The Employment
+        Insurance Operating Account is excluded entirely, as a federal intragovernmental account rather
+        than a transfer to an external recipient.
+      </p>
+      <div class="note">
+        Two figures are derived, not read from a column, and are approximate at the edges:
+        <b>type</b> (grant vs. contribution, inferred from the authority's name — older years often lack
+        the prefix and land in “Other”) and <b>recipient kind</b> (inferred from each recipient's name,
+        location, and paying department). The coverage tables below show how much of the money each
+        derivation actually classifies, so you can judge it.
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Files loaded</h2>
+      <div style="overflow-x:auto"><table id="diagFiles"></table></div>
+    </div>
+    <div class="panel">
+      <h2>Classification coverage</h2>
+      <div class="sub">Share of total dollars (all years, unfiltered) falling in each bucket.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px" id="diagCoverGrid">
+        <div><h3 class="small" style="margin:0 0 8px">By type</h3><table id="diagType"></table></div>
+        <div><h3 class="small" style="margin:0 0 8px">By recipient kind</h3><table id="diagRtype"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <p class="small" style="margin-top:30px;border-top:1px solid var(--rule);padding-top:14px">
+    Source: Public Accounts of Canada transfer-payment files, fetched live from the
+    <span class="num">thereclamare.github.io/CDN_Govt_Spending</span> mirror. Derived classifications are
+    heuristic — see <b>Data &amp; method</b>.
+  </p>
+</div>
+
+<script>
+"use strict";
+
+/* ---------------- config ---------------- */
+const BASE = "https://thereclamare.github.io/CDN_Govt_Spending/Source-data/transfer-payments/";
+// file names: 2015–2021 carry an -eng suffix; 2022+ do not.
+const FILES = [
+  ["2014/2015","pt-tp-2015-eng.csv"],["2015/2016","pt-tp-2016-eng.csv"],
+  ["2016/2017","pt-tp-2017-eng.csv"],["2017/2018","pt-tp-2018-eng.csv"],
+  ["2018/2019","pt-tp-2019-eng.csv"],["2019/2020","pt-tp-2020-eng.csv"],
+  ["2020/2021","pt-tp-2021-eng.csv"],["2021/2022","pt-tp-2022.csv"],
+  ["2022/2023","pt-tp-2023.csv"],["2023/2024","pt-tp-2024.csv"],
+  ["2024/2025","pt-tp-2025.csv"]
+];
+const K = {
+  port:"Min-portfolio_Portefeuille-min_eng",
+  dept:"Dept-name_Nom-min_eng",
+  prog:"Rcpt-class_Cat-bnfcrs_eng",
+  rcpt:"Rcpt-nm-locn_Nm-lieu-bnfcrs_eng",
+  xpnd:"Xpnd-current-yr_Dep-ex-courant",
+  agg:"Aggregate-payments_Versements-totalisant",
+  city:"City_Ville_eng", prov:"Prov-Terr_eng", country:"Country_Pays_eng"
+};
+const PROVS = ["Alberta","British Columbia","Manitoba","New Brunswick","Newfoundland and Labrador",
+  "Northwest Territories","Nova Scotia","Nunavut","Ontario","Prince Edward Island","Quebec","Québec",
+  "Saskatchewan","Yukon"];
+const RTYPES = ["Foreign / international","Provincial & territorial","Municipal / local","Indigenous",
+  "Universities & research","Business / for-profit","Non-profit / NGO","Under-threshold & withheld","Other"];
+const EXCLUDE = /employment insurance operating account/i;  // dropped entirely — federal intragovernmental account, not an external transfer
+const SERIES = ["--c0","--c1","--c2","--c3","--c4","--c5","--c6","--c7","--c8"]
+  .map(v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim());
+
+/* ---------------- helpers ---------------- */
+const num = v => { if(v==null) return 0; const n=parseFloat(String(v).replace(/[^0-9.\-]/g,"")); return isNaN(n)?0:n; };
+const startYr = s => parseInt(String(s).slice(0,4),10);
+const ylab = s => { const a=String(s).split("/"); return a.length===2 ? a[0]+"\u2013"+a[1].slice(2) : s; };
+function fmt(n){
+  const a=Math.abs(n);
+  if(a>=1e9) return "$"+(n/1e9).toFixed(a>=1e10?1:2)+"B";
+  if(a>=1e6) return "$"+(n/1e6).toFixed(a>=1e8?0:1)+"M";
+  if(a>=1e3) return "$"+(n/1e3).toFixed(0)+"K";
+  return "$"+Math.round(n);
+}
+const fmtInt = n => n.toLocaleString("en-CA");
+
+/* recipient-kind classifier — heuristic, order matters */
+function classify(name, intl){
+  const n=(name||"").toLowerCase();
+  if(!n) return "Other";
+  if(/payments?\s+under|contracts?\s+under|names?\s+withheld|name\(s\)\s+withheld|recovery of payment|withheld/.test(n))
+    return "Under-threshold & withheld";
+  if(intl || /united nations|world bank|world food|world health|unicef|unhcr|unesco|undp|unfpa|\bwho\b|international monetary|\bimf\b|inter-american|african development|asian development|caribbean development|european bank|\boecd\b|\bnato\b|red cross|red crescent|global fund|gavi|food and agriculture organization|world trade organization|world university|doctors without borders|save the children|care canada|oxfam|mercy corps|plan international/.test(n))
+    return "Foreign / international";
+  if(/first nation|premi[eè]re nation|cree\b|mi'?k|mikmaq|m[eé]tis nation|m[eé]tis (provincial|nation)|inuit|inuvialuit|\bdene\b|ojibw|mohawk|\binnu\b|nisga|haida|gwich|tlicho|tł|anishina|saulteaux|blackfoot|tribal council|\bband\b|band council|first nations|nunavut tunngavik|makivik|nunatsiavut|self-government|atikamekw|naskapi|tsuut|squamish|musqueam|nuu-chah|heiltsuk|tsilhqot|nation of|chiefs of|assembly of first nations|aboriginal|indigenous/.test(n))
+    return "Indigenous";
+  if(/^province of|^government of|government of (the )?(alberta|british columbia|manitoba|new brunswick|newfoundland|northwest|nova scotia|nunavut|ontario|prince edward|quebec|qu[eé]bec|saskatchewan|yukon)|ministry of| minist[eè]re|ministre des|minister of finance|crop insurance corporation|provincial|gouvernement (du|de la|de l|des)|territor(y|ies)\b|exchequer|treasury board of/.test(n))
+    return "Provincial & territorial";
+  if(/^city of|^town of|^village of|^township|municipalit|regional municipalit|region of|^ville de|metropolitan|county of|district of/.test(n))
+    return "Municipal / local";
+  if(/universit|\bcollege\b|coll[eè]ge|institute|institut\b|polytechniqu|\bschool\b|research (institute|council|centre)|c[eé]gep|\bcrc\b/.test(n))
+    return "Universities & research";
+  if(/\b(inc|ltd|llp|ulc|corp|corporation|company|limited|incorporated|partnership|\.com)\b|\binc\.?$|\bltd\.?$|\blp\b|\bbank\b|scotiabank|financial group|trust company|trust corporation|insurance company|assurance/.test(n))
+    return "Business / for-profit";
+  if(/foundation|association|\bsociety\b|^conseil|\bcouncil\b|coalition|network|institut|centre|center|\bfund\b|ymca|ywca|united way|charit|f[eé]d[eé]ration|federation|\bclub\b|alliance|cooperative|co-op|hospital|health (authority|services|network)|college of/.test(n))
+    return "Non-profit / NGO";
+  return "Other";
+}
+function inferType(prog){
+  const raw=(prog||"").trim();
+  if(raw.startsWith("(S)")) return "Statutory";   // statutory authority — OAS, CHT, equalization, EI, etc.
+  const p=raw.toLowerCase();
+  if(/^grant|^subvention|grants? (in|to|under|for)/.test(p)) return "Grant";
+  if(/^contribution|contributions?/.test(p)) return "Contribution";
+  return "Other transfer payment";
+}
+// old-format geography: location is the trailing comma token of the recipient string
+function geoFromName(name){
+  if(!name) return {prov:"", intl:false, known:false};
+  const parts=name.split(",").map(s=>s.trim()).filter(Boolean);
+  if(parts.length<2) return {prov:"", intl:false, known:false};
+  const last=parts[parts.length-1];
+  if(PROVS.some(p=>p.toLowerCase()===last.toLowerCase())) return {prov:last==="Québec"?"Quebec":last, intl:false, known:true};
+  return {prov:"", intl:true, known:true};
+}
+
+/* ---------------- load ---------------- */
+let DATA=[]; // {y, yl, port, dept, type, prov, geo, rtype, rcpt, amt}
+const diag={files:[]};
+
+function setProgress(done,total,msg){
+  document.getElementById("bar").style.width=Math.round(done/total*100)+"%";
+  if(msg) document.getElementById("loadmsg").textContent=msg;
+}
+
+async function loadAll(){
+  const out=[]; let done=0;
+  const tasks=FILES.map(async ([yr,fn])=>{
+    const rec={year:yr,file:fn,rows:0,total:0,ok:false,note:""};
+    try{
+      const res=await fetch(BASE+fn,{cache:"force-cache"});
+      if(!res.ok) throw new Error("HTTP "+res.status);
+      const text=await res.text();
+      const parsed=Papa.parse(text,{header:true,skipEmptyLines:true});
+      const hasGeo = parsed.meta.fields && parsed.meta.fields.includes(K.country);
+      for(const row of parsed.data){
+        const rcpt=(row[K.rcpt]||"").trim();
+        if(!rcpt) continue;                 // program-header row: total already in its recipients
+        if(EXCLUDE.test(rcpt)) continue;     // EI Operating Account — excluded entirely
+        let amt=num(row[K.agg]); if(amt===0) amt=num(row[K.xpnd]);
+        if(amt===0) continue;
+        let prov="", intl=false;
+        if(hasGeo){
+          const c=(row[K.country]||"").trim(); const p=(row[K.prov]||"").trim();
+          intl = c!=="" && c.toLowerCase()!=="canada";
+          prov = intl ? "" : p;
+        }else{
+          const g=geoFromName(rcpt); prov=g.prov; intl=g.intl;
+        }
+        const type=inferType(row[K.prog]);
+        const rtype=classify(rcpt, intl);
+        out.push({
+          y:startYr(yr), yl:ylab(yr),
+          port:(row[K.port]||"Unspecified").trim(),
+          type, prov, geo: intl?"International":"Domestic",
+          rtype,
+          rcpt: rcpt.split(",")[0].trim(),  // strip embedded location for clean grouping
+          amt
+        });
+        rec.rows++; rec.total+=amt;
+      }
+      rec.ok=true;
+    }catch(e){ rec.note=e.message||String(e); }
+    diag.files.push(rec);
+    done++; setProgress(done,FILES.length, `Loaded ${done} of ${FILES.length} years`);
+    return null;
+  });
+  await Promise.allSettled(tasks);
+  diag.files.sort((a,b)=>a.year.localeCompare(b.year));
+  DATA=out;
+}
+
+/* ---------------- state + filtering ---------------- */
+const S={ yrMin:null, yrMax:null, ministry:"__all", recipient:null,
+  types:new Set(["Statutory","Grant","Contribution","Other transfer payment"]),
+  geos:new Set(["Domestic","International"]),
+  rtypes:new Set(RTYPES) };
+let ALL_RECIPIENTS=[];
+let charts={};
+
+function years(){ return [...new Set(DATA.map(d=>d.y))].sort((a,b)=>a-b); }
+function filtered(ignoreMinistry=false){
+  return DATA.filter(d=> d.y>=S.yrMin && d.y<=S.yrMax
+    && (ignoreMinistry || S.ministry==="__all" || d.port===S.ministry)
+    && (!S.recipient || d.rcpt===S.recipient)
+    && S.types.has(d.type) && S.geos.has(d.geo) && S.rtypes.has(d.rtype));
+}
+function sumByYear(rows){
+  const m=new Map(); for(const d of rows) m.set(d.y,(m.get(d.y)||0)+d.amt);
+  return years().filter(y=>y>=S.yrMin&&y<=S.yrMax).map(y=>m.get(y)||0);
+}
+function labels(){ const ys=years().filter(y=>y>=S.yrMin&&y<=S.yrMax);
+  return ys.map(y=>{ const d=DATA.find(r=>r.y===y); return d?d.yl:y; }); }
+
+/* ---------------- chart base ---------------- */
+const INK=getComputedStyle(document.documentElement).getPropertyValue("--ink").trim();
+const INK2=getComputedStyle(document.documentElement).getPropertyValue("--ink-2").trim();
+const RULE=getComputedStyle(document.documentElement).getPropertyValue("--rule").trim();
+Chart.defaults.font.family="IBM Plex Mono, monospace";
+Chart.defaults.font.size=11;
+Chart.defaults.color=INK2;
+function yAxis(){ return {grid:{color:RULE,drawTicks:false},border:{display:false},
+  ticks:{callback:v=>fmt(v)}}; }
+function xAxis(){ return {grid:{display:false},border:{color:RULE}}; }
+function kill(id){ if(charts[id]){charts[id].destroy(); delete charts[id]; } }
+
+/* ---------------- renders ---------------- */
+function renderKPIs(){
+  const rows=filtered(); const tot=rows.reduce((a,d)=>a+d.amt,0);
+  const ys=years().filter(y=>y>=S.yrMin&&y<=S.yrMax);
+  const lastY=ys[ys.length-1];
+  const lastTot=rows.filter(d=>d.y===lastY).reduce((a,d)=>a+d.amt,0);
+  const recips=new Set(rows.map(d=>d.rcpt)).size;
+  const minis=new Set(rows.map(d=>d.port)).size;
+  const series=sumByYear(rows); const first=series.find(v=>v>0)||0;
+  const chg= first? (lastTot-first)/first*100 : 0;
+  const k=[
+    ["Paid, "+(DATA.find(d=>d.y===lastY)?.yl||lastY), fmt(lastTot)],
+    ["Total, range", fmt(tot)],
+    ["Change over range", (chg>=0?"+":"")+chg.toFixed(0)+"%", chg>=0?"pos":"neg"],
+    ["Recipients", fmtInt(recips)],
+    ["Ministries", fmtInt(minis)]
+  ];
+  document.getElementById("kpis").innerHTML=k.map(([lab,val,cls])=>
+    `<div class="kpi"><div class="k">${lab}</div><div class="v num ${cls||""}">${val}</div></div>`).join("");
+}
+
+function renderTrend(){
+  kill("trend");
+  const rows=filtered();
+  charts.trend=new Chart(document.getElementById("trendChart"),{
+    type:"line",
+    data:{labels:labels(),datasets:[{
+      data:sumByYear(rows), borderColor:SERIES[2], backgroundColor:"rgba(200,16,46,.08)",
+      borderWidth:2.5, pointRadius:3, pointBackgroundColor:SERIES[2], fill:true, tension:.18
+    }]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:c=>fmt(c.parsed.y)}}},
+      scales:{y:yAxis(),x:xAxis()}}
+  });
+}
+
+function groupVals(rows,dim){
+  // returns Map member -> [per-year sums]
+  const ys=years().filter(y=>y>=S.yrMin&&y<=S.yrMax);
+  const idx=new Map(ys.map((y,i)=>[y,i]));
+  const m=new Map();
+  const keyfn = dim==="type"?d=>d.type : dim==="rtype"?d=>d.rtype
+    : dim==="geo"?d=>d.geo : dim==="prov"?d=>(d.prov||"Unspecified")
+    : dim==="recipient"?d=>d.rcpt : d=>d.port;
+  for(const d of rows){ const k=keyfn(d); if(!m.has(k)) m.set(k,new Array(ys.length).fill(0));
+    m.get(k)[idx.get(d.y)]+=d.amt; }
+  return m;
+}
+function topMembers(m,n){
+  return [...m.entries()].map(([k,arr])=>[k,arr.reduce((a,b)=>a+b,0)])
+    .sort((a,b)=>b[1]-a[1]).slice(0,n).map(e=>e[0]);
+}
+
+function renderComp(dim){
+  kill("comp");
+  const rows=filtered(dim==="ministry"); // if stacking by ministry, ignore ministry filter
+  let m=groupVals(rows,dim);
+  let members=[...m.keys()];
+  if(dim==="ministry"){ const top=topMembers(m,8);
+    const other=new Array(labels().length).fill(0);
+    for(const [k,arr] of m) if(!top.includes(k)) arr.forEach((v,i)=>other[i]+=v);
+    const nm=new Map(); top.forEach(k=>nm.set(k,m.get(k)));
+    if(other.some(v=>v>0)) nm.set("Other ministries",other);
+    m=nm; members=[...m.keys()];
+  } else { members=topMembers(m,9); }
+  const ds=members.map((k,i)=>({label:k,data:m.get(k),backgroundColor:SERIES[i%SERIES.length],
+    borderWidth:0,stack:"s"}));
+  charts.comp=new Chart(document.getElementById("compChart"),{
+    type:"bar",
+    data:{labels:labels(),datasets:ds},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:"bottom",labels:{boxWidth:10,boxHeight:10,font:{size:11}}},
+        tooltip:{callbacks:{label:c=>c.dataset.label+": "+fmt(c.parsed.y)}}},
+      scales:{x:{...xAxis(),stacked:true},y:{...yAxis(),stacked:true}}}
+  });
+}
+
+/* compare tab */
+const CMP={dim:"ministry",members:new Set()};
+function cmpAllMembers(){
+  const rows=DATA.filter(d=>d.y>=S.yrMin&&d.y<=S.yrMax);
+  const m=groupVals(rows,CMP.dim);
+  return topMembers(m, CMP.dim==="type"?4:(CMP.dim==="geo"?2:(CMP.dim==="recipient"?10:24)));
+}
+function cmpAllMembersFull(){
+  if(CMP.dim==="recipient") return ALL_RECIPIENTS;
+  const rows=DATA.filter(d=>d.y>=S.yrMin&&d.y<=S.yrMax);
+  return [...groupVals(rows,CMP.dim).keys()].sort((a,b)=>a.localeCompare(b));
+}
+/* reusable alphabetical type-ahead: getOptions()=>string[], onPick(value) */
+function attachTypeahead(input,getOptions,onPick){
+  let wrap=input.closest(".ac-wrap");
+  if(!wrap){ wrap=document.createElement("div"); wrap.className="ac-wrap";
+    input.parentNode.insertBefore(wrap,input); wrap.appendChild(input); }
+  const menu=document.createElement("div"); menu.className="ac-menu"; menu.style.display="none"; wrap.appendChild(menu);
+  let items=[], active=-1;
+  const close=()=>{menu.style.display="none";active=-1;};
+  const hi=()=>menu.querySelectorAll(".ac-item").forEach((el,i)=>el.classList.toggle("on",i===active));
+  function render(){
+    const q=input.value.trim().toLowerCase();
+    items=getOptions().filter(o=>o&&o.toLowerCase().includes(q)).sort((a,b)=>a.localeCompare(b)).slice(0,40);
+    if(!items.length){close();return;}
+    menu.innerHTML=items.map((o,i)=>`<div class="ac-item" data-i="${i}" title="${o.replace(/"/g,'&quot;')}">${o}</div>`).join("");
+    menu.style.display="block"; active=-1;
+    menu.querySelectorAll(".ac-item").forEach(el=>el.onmousedown=e=>{e.preventDefault();pick(+el.getAttribute("data-i"));});
+  }
+  function pick(i){ if(i<0||i>=items.length)return; const v=items[i]; close(); onPick(v); }
+  input.addEventListener("input",render);
+  input.addEventListener("focus",()=>{ if(input.value.trim()) render(); });
+  input.addEventListener("keydown",e=>{
+    if(menu.style.display==="none") return;
+    if(e.key==="ArrowDown"){active=Math.min(active+1,items.length-1);hi();e.preventDefault();}
+    else if(e.key==="ArrowUp"){active=Math.max(active-1,0);hi();e.preventDefault();}
+    else if(e.key==="Enter"&&active>=0){pick(active);e.preventDefault();}
+    else if(e.key==="Escape"){close();}
+  });
+  input.addEventListener("blur",()=>setTimeout(close,150));
+}
+function renderCmpMembers(){
+  const box=document.getElementById("cmpMembers");
+  const all=cmpAllMembers();
+  if(CMP.members.size===0) all.slice(0,3).forEach(x=>CMP.members.add(x));
+  box.innerHTML=all.map(k=>`<span class="chip ${CMP.members.has(k)?"on":""}" data-k="${k.replace(/"/g,'&quot;')}">${k}</span>`).join("");
+  box.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{
+    const k=c.getAttribute("data-k");
+    if(CMP.members.has(k)) CMP.members.delete(k);
+    else { if(CMP.members.size>=7) return; CMP.members.add(k); }
+    renderCmpMembers(); renderCmp();
+  });
+}
+function renderCmp(){
+  kill("cmp");
+  const rows=DATA.filter(d=>d.y>=S.yrMin&&d.y<=S.yrMax);
+  const m=groupVals(rows,CMP.dim);
+  const mem=[...CMP.members].filter(k=>m.has(k));
+  const ds=mem.map((k,i)=>({label:k,data:m.get(k),borderColor:SERIES[i%SERIES.length],
+    backgroundColor:"transparent",borderWidth:2.2,pointRadius:2,tension:.18}));
+  charts.cmp=new Chart(document.getElementById("cmpChart"),{
+    type:"line",data:{labels:labels(),datasets:ds},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:"bottom",labels:{boxWidth:10,boxHeight:10}},
+        tooltip:{callbacks:{label:c=>c.dataset.label+": "+fmt(c.parsed.y)}}},
+      scales:{y:yAxis(),x:xAxis()}}});
+  // table
+  const t=document.getElementById("cmpTable");
+  let h=`<tr><th>${({ministry:"Ministry",recipient:"Recipient",rtype:"Recipient kind",type:"Type",prov:"Province"})[CMP.dim]}</th>
+    <th class="r">First yr</th><th class="r">Last yr</th><th class="r">Total</th><th class="r">Change</th></tr>`;
+  mem.forEach((k,i)=>{ const arr=m.get(k); const f=arr.find(v=>v>0)||0; const l=arr[arr.length-1]||0;
+    const tot=arr.reduce((a,b)=>a+b,0); const ch=f?(l-f)/f*100:0;
+    h+=`<tr><td><span class="swatch" style="background:${SERIES[i%SERIES.length]}"></span>${k}</td>
+      <td class="r num">${fmt(f)}</td><td class="r num">${fmt(l)}</td><td class="r num">${fmt(tot)}</td>
+      <td class="r num ${ch>=0?"pos":"neg"}">${(ch>=0?"+":"")+ch.toFixed(0)}%</td></tr>`; });
+  t.innerHTML=h;
+}
+
+/* recipients tab */
+let rSel=null;
+function renderRecipients(){
+  const q=document.getElementById("rSearch").value.trim().toLowerCase();
+  const rows=filtered();
+  const m=new Map();
+  for(const d of rows){ if(q && !d.rcpt.toLowerCase().includes(q)) continue;
+    const e=m.get(d.rcpt)||{tot:0,rtype:d.rtype}; e.tot+=d.amt; m.set(d.rcpt,e); }
+  const arr=[...m.entries()].sort((a,b)=>b[1].tot-a[1].tot).slice(0,200);
+  const max=arr.length?arr[0][1].tot:1;
+  const t=document.getElementById("rTable");
+  let h=`<tr><th>#</th><th>Recipient</th><th>Kind</th><th class="r">Total received</th><th style="width:120px"></th></tr>`;
+  arr.forEach(([name,e],i)=>{
+    h+=`<tr class="clickable" data-r="${name.replace(/"/g,'&quot;')}">
+      <td class="num">${i+1}</td><td>${name}</td><td class="small">${e.rtype}</td>
+      <td class="r num">${fmt(e.tot)}</td>
+      <td><span class="bar" style="width:${Math.max(2,e.tot/max*110)}px"></span></td></tr>`;
+  });
+  if(!arr.length) h+=`<tr><td colspan="5" class="small">No recipients match this filter. Widen the years or clear the search.</td></tr>`;
+  t.innerHTML=h;
+  t.querySelectorAll("tr.clickable").forEach(tr=>tr.onclick=()=>showRecipient(tr.getAttribute("data-r")));
+}
+function showRecipient(name){
+  rSel=name; document.getElementById("rDetailPanel").style.display="";
+  document.getElementById("rDetailName").textContent=name;
+  const ys=years().filter(y=>y>=S.yrMin&&y<=S.yrMax);
+  const idx=new Map(ys.map((y,i)=>[y,i])); const arr=new Array(ys.length).fill(0);
+  for(const d of filtered()) if(d.rcpt===name) arr[idx.get(d.y)]+=d.amt;
+  kill("r");
+  charts.r=new Chart(document.getElementById("rChart"),{
+    type:"bar",data:{labels:labels(),datasets:[{data:arr,backgroundColor:SERIES[1],borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+      tooltip:{callbacks:{label:c=>fmt(c.parsed.y)}}},scales:{y:yAxis(),x:xAxis()}}});
+  document.getElementById("rDetailPanel").scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+
+/* method tab */
+function renderDiag(){
+  let h=`<tr><th>Fiscal year</th><th>File</th><th class="r">Recipient rows</th><th class="r">Total</th><th>Status</th></tr>`;
+  for(const f of diag.files){
+    h+=`<tr><td class="num">${f.year}</td><td class="small num">${f.file}</td>
+      <td class="r num">${f.ok?fmtInt(f.rows):"—"}</td><td class="r num">${f.ok?fmt(f.total):"—"}</td>
+      <td class="${f.ok?"pos":"err"}">${f.ok?"loaded":("failed · "+f.note)}</td></tr>`;
+  }
+  document.getElementById("diagFiles").innerHTML=h;
+  const grand=DATA.reduce((a,d)=>a+d.amt,0)||1;
+  function cover(keyfn,order){
+    const m=new Map(); for(const d of DATA){const k=keyfn(d); m.set(k,(m.get(k)||0)+d.amt);}
+    const ent=order?order.filter(k=>m.has(k)).map(k=>[k,m.get(k)]):[...m.entries()].sort((a,b)=>b[1]-a[1]);
+    return ent.map(([k,v])=>`<tr><td>${k}</td><td class="r num">${fmt(v)}</td>
+      <td class="r num">${(v/grand*100).toFixed(1)}%</td></tr>`).join("");
+  }
+  document.getElementById("diagType").innerHTML=
+    `<tr><th>Type</th><th class="r">$</th><th class="r">Share</th></tr>`+cover(d=>d.type,["Statutory","Grant","Contribution","Other transfer payment"]);
+  document.getElementById("diagRtype").innerHTML=
+    `<tr><th>Kind</th><th class="r">$</th><th class="r">Share</th></tr>`+cover(d=>d.rtype,RTYPES);
+}
+
+/* ---------------- full repaint ---------------- */
+let compDim="type";
+function repaint(){
+  renderKPIs(); renderTrend(); renderComp(compDim);
+  if(curTab==="recipients") renderRecipients();
+  if(curTab==="compare"){ renderCmpMembers(); renderCmp(); }
+}
+
+/* ---------------- UI wiring ---------------- */
+let curTab="trends";
+function buildFilters(){
+  const ys=years();
+  S.yrMin=ys[0]; S.yrMax=ys[ys.length-1];
+  const ymin=document.getElementById("yrMin"), ymax=document.getElementById("yrMax");
+  ys.forEach(y=>{ const l=DATA.find(d=>d.y===y).yl;
+    ymin.innerHTML+=`<option value="${y}">${l}</option>`; ymax.innerHTML+=`<option value="${y}">${l}</option>`; });
+  ymin.value=S.yrMin; ymax.value=S.yrMax;
+  ymin.onchange=()=>{S.yrMin=Math.min(+ymin.value,+ymax.value); if(+ymin.value>+ymax.value){ymax.value=ymin.value;S.yrMax=+ymin.value;} repaint();};
+  ymax.onchange=()=>{S.yrMax=Math.max(+ymin.value,+ymax.value); if(+ymax.value<+ymin.value){ymin.value=ymax.value;S.yrMin=+ymax.value;} repaint();};
+
+  const ministries=["All ministries",...[...new Set(DATA.map(d=>d.port))].sort()];
+  const mi=document.getElementById("fMinistry");
+  attachTypeahead(mi, ()=>ministries, v=>{
+    S.ministry = v==="All ministries" ? "__all" : v;
+    mi.value = v==="All ministries" ? "" : v;
+    repaint();
+  });
+  mi.addEventListener("input",()=>{ if(mi.value.trim()===""){ S.ministry="__all"; repaint(); } });
+
+  ALL_RECIPIENTS=[...new Set(DATA.map(d=>d.rcpt))].sort((a,b)=>a.localeCompare(b));
+  const ri=document.getElementById("fRecipient");
+  attachTypeahead(ri, ()=>ALL_RECIPIENTS, v=>{ S.recipient=v; ri.value=v; repaint(); });
+  ri.addEventListener("input",()=>{ if(ri.value.trim()===""){ S.recipient=null; repaint(); } });
+
+  chipSet("fType",["Statutory","Grant","Contribution","Other transfer payment"],S.types);
+  chipSet("fGeo",["Domestic","International"],S.geos);
+  chipSet("fRtype",RTYPES,S.rtypes);
+
+  document.getElementById("yrspan").textContent=DATA.find(d=>d.y===ys[0]).yl+" – "+DATA.find(d=>d.y===ys[ys.length-1]).yl;
+  const okyrs=diag.files.filter(f=>f.ok).length;
+  document.getElementById("loadedyrs").textContent=okyrs+" of "+FILES.length+" years loaded";
+}
+function chipSet(id,items,set){
+  const box=document.getElementById(id);
+  box.innerHTML=items.map(it=>`<span class="chip ${set.has(it)?"on":""}" data-v="${it}">${it}</span>`).join("");
+  box.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{
+    const v=c.getAttribute("data-v");
+    if(set.has(v)){ if(set.size>1) set.delete(v); } else set.add(v);
+    c.classList.toggle("on",set.has(v)); repaint();
+  });
+}
+function wireTabs(){
+  document.querySelectorAll("nav.tabs button").forEach(b=>b.onclick=()=>{
+    curTab=b.getAttribute("data-tab");
+    document.querySelectorAll("nav.tabs button").forEach(x=>x.classList.toggle("on",x===b));
+    document.querySelectorAll("section[data-pane]").forEach(s=>
+      s.style.display = s.getAttribute("data-pane")===curTab ? "" : "none");
+    // hide global filters on tabs that don't use them
+    document.getElementById("filters").style.display = (curTab==="compare"||curTab==="method")?"none":"grid";
+    document.getElementById("kpis").style.display = (curTab==="method")?"none":"grid";
+    if(curTab==="recipients") renderRecipients();
+    if(curTab==="compare"){ renderCmpMembers(); renderCmp(); }
+    if(curTab==="method") renderDiag();
+  });
+  document.querySelectorAll("#compDim button").forEach(b=>b.onclick=()=>{
+    compDim=b.getAttribute("data-d");
+    document.querySelectorAll("#compDim button").forEach(x=>x.classList.toggle("on",x===b));
+    renderComp(compDim);
+  });
+  document.getElementById("cmpDim").onchange=e=>{CMP.dim=e.target.value; CMP.members.clear(); renderCmpMembers(); renderCmp();};
+  attachTypeahead(document.getElementById("cmpSearch"), ()=>cmpAllMembersFull(), v=>{
+    const cs=document.getElementById("cmpSearch");
+    if(!CMP.members.has(v) && CMP.members.size<7) CMP.members.add(v);
+    cs.value=""; renderCmpMembers(); renderCmp();
+  });
+  const rs=document.getElementById("rSearch");
+  attachTypeahead(rs, ()=>[...new Set(filtered().map(d=>d.rcpt))], v=>{ rs.value=v; renderRecipients(); showRecipient(v); });
+  let to; rs.oninput=()=>{clearTimeout(to); to=setTimeout(renderRecipients,180);};
+}
+
+/* ---------------- boot ---------------- */
+(async function(){
+  await loadAll();
+  if(!DATA.length){
+    document.getElementById("loadmsg").innerHTML='<span class="err">Could not load any source files. The GitHub mirror may be unreachable from here.</span>';
+    return;
+  }
+  buildFilters(); wireTabs(); repaint(); renderDiag();
+  document.getElementById("loader").style.display="none";
+  document.getElementById("app").style.display="";
+})();
+</script>
+</body>
+</html>
